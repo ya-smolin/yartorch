@@ -2,14 +2,11 @@
 import time
 
 import cv2
-import torch
-from PIL import Image
+import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from fastai.data.external import untar_data, URLs
 from fastai.data.transforms import get_image_files
-import matplotlib.pyplot as plt
-from torch import clamp
-import torch
 
 
 def show_img(num_img):
