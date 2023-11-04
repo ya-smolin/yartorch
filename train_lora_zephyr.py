@@ -4,12 +4,14 @@ import evaluate
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, GenerationConfig, Trainer, TrainingArguments
 
-model_path = "/home/sysgen/Pycharm/wotspace/text-generation-webui/models/HuggingFaceH4_zephyr-7b-beta"
+#model_path = "/home/sysgen/Pycharm/wotspace/text-generation-webui/models/HuggingFaceH4_zephyr-7b-beta"
+model_path = "TheBloke/zephyr-7B-beta-GPTQ"
 
 model = AutoModelForCausalLM.from_pretrained(model_path,
                                              device_map="auto",
                                              trust_remote_code=False,
                                              revision="main")
+
 
 tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
 
@@ -54,7 +56,7 @@ prompt_template=f'''<|system|>
 inputs = tokenizer(prompt_template, return_tensors='pt')
 output = tokenizer.decode(
     model.generate(
-        inputs["input_ids"],
+        inputs["input_ids"].cuda(),
         max_new_tokens=200,
     )[0],
     skip_special_tokens=True
@@ -77,11 +79,8 @@ def tokenize_function(example):
     <|assistant|>
     '''
     prompt = [prompt_template(dialogue) for dialogue in example["dialogue"]]
-    example['input_ids'] = tokenizer(prompt, padding=True, truncation=True, return_tensors="pt").input_ids
-    #TODO: ValueError: Unable to create tensor, you should probably activate truncation and/or padding with 'padding=True' 'truncation=True' to have batched tensors with the same length. Perhaps your features (`input_ids` in this case) have excessive nesting (inputs type `list` where type `int` is expected).
-    example['labels'] = tokenizer(example["summary"], padding="max_length", truncation=True,
-                                  return_tensors="pt").input_ids
-
+    example['input_ids'] = tokenizer(prompt, max_length=512, padding="max_length", truncation=True, return_tensors="pt").input_ids
+    example['labels'] = tokenizer(example["summary"], max_length=128, padding="max_length", truncation=True, return_tensors="pt").input_ids
     return example
 
 
