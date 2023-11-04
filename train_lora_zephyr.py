@@ -98,7 +98,7 @@ from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 lora_config = LoraConfig(
     r=32,  # Rank
     lora_alpha=32,
-    target_modules=["q", "v"],
+    target_modules=["q_proj", "v_proj"],
     lora_dropout=0.05,
     bias="none",
     task_type=TaskType.SEQ_2_SEQ_LM  # FLAN-T5
