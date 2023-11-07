@@ -1,18 +1,20 @@
 # Modifying the Node class to handle different types for power in __pow__ method
 import time
 
+import cv2
 import graphviz
 import numpy as np
+from PIL.Image import Image
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import torch
 
-m = 2  # Slope
-c = 1  # y-intercept
+m = 2.0  # Slope
+c = 1.0  # y-intercept
 
-def draw_dot(val):
+def draw_dot(val, grad_check):
     g = graphviz.Digraph()
     seen = set()
 
@@ -20,12 +22,16 @@ def draw_dot(val):
         if v not in seen:
             seen.add(v)
             line1 = f"{v.label}={v.get_label_p()}={round(v.data, 3)}"
+            tllabel = f"dl_d{v.label}"
+            ttlabel=""
+            if tllabel in grad_check:
+                ttlabel = grad_check[tllabel]
             dc_dp_labels = [f"d{v.label}/d{p.label}={np.round(v.dcur_dparent[i], 3)}" for i, p in enumerate(v.parents)]
             if dc_dp_labels:
                 dc_dp_labels = str(dc_dp_labels).replace("'", "")
             else:
                 dc_dp_labels = ""
-            g.node(str(id(v)), label=f"{line1}\n{dc_dp_labels}{v.dcur_dparent if v.op is None else ''}\ndl/d{v.label}={v.grad}")
+            g.node(str(id(v)), label=f"{line1}\n{dc_dp_labels}{v.dcur_dparent if v.op is None else ''}\n{tllabel}={v.grad}\nT{tllabel}={ttlabel}", shape="box")
             for p in v.parents:
                 g.edge(str(id(p)), str(id(v)))
                 build(p)
@@ -33,6 +39,21 @@ def draw_dot(val):
     build(val)
     return g
 
+
+def visualize_plot():
+    ax = plot_function(x, y, w0, b0)
+    plt.pause(1)
+    plt.draw()
+
+
+def visualiza_graph():
+    g = draw_dot(l, grad_check)
+    g.format = 'png'  # Set format to PNG
+    png_bytes = g.pipe(format='png')  # Get PNG byte representation
+    nparr = np.frombuffer(png_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    cv2.imshow('Graph Image', img)
+    cv2.waitKey(1)
 
 # Define the function
 def h(x1, y, w1_, b_):
@@ -44,8 +65,8 @@ np.random.seed(1)
 x10 = 5
 y0 = 1
 
-fig = plt.figure(figsize=(6, 6))
 def plot_loss_function_local(*args):
+    fig = plt.figure(figsize=(6, 6))
     x1_ = args[0]
     y_ = args[1]
     w0, b0 = args[2], args[3]
@@ -118,23 +139,40 @@ def generate_dataset():
     # plt.show()
     return x, y_noisy
 
-def check_torch(w0, b0):
+def check_torch(w0, b0, x0, y0):
     import torch
 
     # Initialize x as a tensor with gradient tracking
     w1 = torch.tensor(w0, requires_grad=True)
     b1 = torch.tensor(b0, requires_grad=True)
-    x1 = torch.tensor(m)
-    y1 = torch.tensor(c)
+    x1 = torch.tensor(x0)
+    x1.requires_grad = True
+    x1.retain_grad()
+    y1 = torch.tensor(y0)
+    y1.requires_grad= True
+    y1.retain_grad()
+    u = w1 * x1
 
-    l = (torch.relu(w1 * x1 + b1) - y1) ** 2
+    u.retain_grad()
+    z = u + b1
 
+    z.retain_grad()
+    a = torch.relu(z)
+
+    a.retain_grad()
+    lm = a - y1
+
+    lm.retain_grad()
+    l = lm ** 2
+
+
+    l.retain_grad()
     # Perform backpropagation to calculate dl/dx
     l.backward()
 
     # dl/dx will be stored in x.grad
     dl_dw1, dl_b1 = w1.grad, b1.grad
-    return dl_dw1, dl_b1
+    return {"dl_dw1" : dl_dw1, "dl_b0": dl_b1, "dl_dx1":x1.grad, "dl_dy1":y1.grad, "dl_du":u.grad, "dl_dz":z.grad, "dl_da":a.grad, "dl_dlm":lm.grad, "dl_dl":l.grad}
 
 
 class Node:
@@ -270,13 +308,14 @@ X, Y = generate_dataset()
 # X = (X - X.mean()) / X.std()
 # Y = (Y - Y.mean()) / Y.std()
 
-w0 = 6
-b0 = 6
+w0 = 6.0
+b0 = 6.0
 
 learnrate = 0.001
+epoch = 1
 
 vv = None
-for i in range(1):
+for i in range(epoch):
     for x, y in zip(X, Y):
         # Rebuild the computational graph
         w1 = Node(w0, label="w1")
@@ -302,21 +341,15 @@ for i in range(1):
         l.label = "l"
 
         l.backward_dl_dc()
-        if vv is None:
-            g = draw_dot(l)
-            g.view()
-            vv = 5
+
         print("==")
         print(w1.grad, " ", b1.grad)
-        w1grad, b1grad = check_torch(float(w0), float(b0))
-
+        grad_check = check_torch(float(w0), float(b0),  float(x), float(y) )
+        w1grad, b1grad = grad_check["dl_dw1"], grad_check["dl_b0"]
         print(w1grad.item(), " ", b1grad.item())
         print("==")
         w0 = w0 - w1.grad * learnrate
         b0 = b0 - b1.grad * learnrate
-
         print(f"loss:{l.data:.5f}", f"w0:{w0:.5f}", f"b0:{b0:.5f}")
 
-        # ax = plot_function(x, y, w0, b0)
-        # plt.pause(1)
-        # plt.draw()
+
