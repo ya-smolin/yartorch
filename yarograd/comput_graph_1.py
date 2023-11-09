@@ -7,12 +7,12 @@ import numpy as np
 from PIL.Image import Image
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib
+
+from yarograd.node import Node
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import torch
-
-m = 2.0  # Slope
-c = 1.0  # y-intercept
 
 def draw_dot(val, grad_check):
     g = graphviz.Digraph()
@@ -26,25 +26,18 @@ def draw_dot(val, grad_check):
             ttlabel=""
             if tllabel in grad_check:
                 ttlabel = grad_check[tllabel]
-            dc_dp_labels = [f"d{v.label}/d{p.label}={np.round(v.dcur_dparent[i], 3)}" for i, p in enumerate(v.parents)]
+            dc_dp_labels = [f"d{v.label}/d{p.label}={np.round(v.dc_dp[i], 3)}" for i, p in enumerate(v.parents)]
             if dc_dp_labels:
                 dc_dp_labels = str(dc_dp_labels).replace("'", "")
             else:
                 dc_dp_labels = ""
-            g.node(str(id(v)), label=f"{line1}\n{dc_dp_labels}{v.dcur_dparent if v.op is None else ''}\n{tllabel}={v.grad}\nT{tllabel}={ttlabel}", shape="box")
+            g.node(str(id(v)), label=f"{line1}\n{dc_dp_labels}{v.dc_dp if v.op is None else ''}\n{tllabel}={v.grad}\nT{tllabel}={ttlabel}", shape="box")
             for p in v.parents:
                 g.edge(str(id(p)), str(id(v)))
                 build(p)
 
     build(val)
     return g
-
-
-def visualize_plot():
-    ax = plot_function(x, y, w0, b0)
-    plt.pause(1)
-    plt.draw()
-
 
 def visualiza_graph():
     g = draw_dot(l, grad_check)
@@ -55,89 +48,25 @@ def visualiza_graph():
     cv2.imshow('Graph Image', img)
     cv2.waitKey(1)
 
-# Define the function
-def h(x1, y, w1_, b_):
-    return (np.maximum(0, w1_ * x1 + b_) - y) ** 2
-
-# random seed=1
-np.random.seed(1)
-
-x10 = 5
-y0 = 1
-
-def plot_loss_function_local(*args):
-    fig = plt.figure(figsize=(6, 6))
-    x1_ = args[0]
-    y_ = args[1]
-    w0, b0 = args[2], args[3]
-    # Generate grid for x1 and x2 values
-    w1_grid = np.linspace(-1, 6, 50)
-    b_grid = np.linspace(-1, 6, 50)
-    x1_grid, x2_grid = np.meshgrid(w1_grid, b_grid)
-
-    # Compute h values for the surface
-    h_values = h(x1_, y_, x1_grid, x2_grid)
-
-    ax = fig.add_subplot(111, projection='3d')
-    ax.clear()
-    ax.plot_surface(x1_grid, x2_grid, h_values, alpha=0.5, label='h(x1, x2)')
-    point, = ax.plot([w0], [b0], [0], marker='o', markersize=8, color='red', label='Current (w0, b0)')
-    ax.set_xlabel('w1')
-    ax.set_ylabel('b')
-    ax.set_zlabel('Value')
-    #ax.set_zlim(0, 1)  # Set Z-axis range
-    ax.set_title('3D Surface Plots')
-    return ax
-
-def plot_loss_function(X, Y):
-    # Generate meshgrid for w1 and b1
-    w1_values = np.linspace(-1, 6, 100)
-    b1_values = np.linspace(-1, 6, 100)
-    w1_mesh, b1_mesh = np.meshgrid(w1_values, b1_values)
-
-    # Reshape X and Y for broadcasting
-    X_reshaped = X[:, np.newaxis, np.newaxis]
-    Y_reshaped = Y[:, np.newaxis, np.newaxis]
-
-    # Calculate loss using broadcasting
-    Z = np.sum((np.maximum(0, w1_mesh * X_reshaped + b1_mesh) - Y_reshaped) ** 2, axis=0)
-
-    # Create 3D surface plot
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.clear()
-    ax.plot_surface(w1_mesh, b1_mesh, Z, alpha=0.5, label='h(x1, x2)')
-    ax.set_xlabel('w1')
-    ax.set_ylabel('b1')
-    ax.set_zlabel('Loss')
-    ax.set_title('3D Surface Plots')
-
-    #plt.show()
-    return ax
-
-
 def generate_dataset():
-    # Step 1: Generate x values
-    n_points = 100
-    x = np.linspace(0, 10, n_points)
+    import numpy as np
 
-    # Step 2: Compute y values using the linear equation y = mx + c
+    num_samples_per_class = 1000
+    negative_samples = np.random.multivariate_normal(
+        mean=[0, 3],
+        cov=[[1, 0.5], [0.5, 1]],
+        size=num_samples_per_class)
+    positive_samples = np.random.multivariate_normal(
+        mean=[3, 0],
+        cov=[[1, 0.5], [0.5, 1]],
+        size=num_samples_per_class)
 
-    y_true = m * x + c
+    inputs = np.vstack((negative_samples, positive_samples)).astype(np.float32)
 
-    # Step 3: Add Gaussian noise to y values
-    noise_stddev = 1  # Standard deviation of Gaussian noise
-    y_noisy = y_true + np.random.normal(0, noise_stddev, n_points)
+    targets = np.vstack((np.zeros((num_samples_per_class, 1), dtype="float32"),
+                         np.ones((num_samples_per_class, 1), dtype="float32")))
 
-    # Plotting the synthetic dataset
-    # plt.scatter(x, y_noisy, label='Noisy Data', c='blue')
-    # plt.plot(x, y_true, label='True Line', c='red')
-    # plt.legend()
-    # plt.xlabel('x')
-    # plt.ylabel('y')
-    # plt.title('Synthetic Dataset for 1D Linear Regression')
-    # plt.show()
-    return x, y_noisy
+    return inputs, targets
 
 def check_torch(w0, b0, x0, y0):
     import torch
@@ -149,7 +78,7 @@ def check_torch(w0, b0, x0, y0):
     x1.requires_grad = True
     x1.retain_grad()
     y1 = torch.tensor(y0)
-    y1.requires_grad= True
+    y1.requires_grad = True
     y1.retain_grad()
     u = w1 * x1
 
@@ -175,132 +104,6 @@ def check_torch(w0, b0, x0, y0):
     return {"dl_dw1" : dl_dw1, "dl_b0": dl_b1, "dl_dx1":x1.grad, "dl_dy1":y1.grad, "dl_du":u.grad, "dl_dz":z.grad, "dl_da":a.grad, "dl_dlm":lm.grad, "dl_dl":l.grad}
 
 
-class Node:
-
-    def __init__(self, data, parents=None, op=None, label=""):
-        if parents is None:
-            parents = []
-        self.data = data
-        self.children = []
-        self.parents = parents
-        self.op = op
-        self.label = label
-        self.label_p = None
-        self.dcur_dparent = [] # for leaf nodes
-        self.grad = 0  # dl/dc
-        self.is_require_grads = False
-
-        # Compute gradients as graph is created
-        if self.op is not None:
-            if self.op == '+':
-                self.dcur_dparent = [1, 1]
-            elif self.op == '-':
-                self.dcur_dparent = [1, -1]
-            elif self.op == '*':
-                self.dcur_dparent = [self.parents[1].data, self.parents[0].data]
-            elif self.op.startswith('**'):
-                power = float(self.op[2:])
-                self.dcur_dparent = [power * (self.parents[0].data ** (power - 1))]
-            elif self.op == 'sin':
-                self.dcur_dparent = [np.cos(self.parents[0].data)]
-            elif self.op == 'cos':
-                self.dcur_dparent = [-np.sin(self.parents[0].data)]
-            elif self.op == 'relu':
-                self.dcur_dparent = [1 if self.parents[0].data > 0 else 0]
-
-    def __repr__(self):
-        return f"{self.label}"
-
-    def get_label_p(self):
-        if self.label_p is not None or self.op is None:
-            return self.label_p
-        if self.op == '+':
-            self.label_p = self.parents[0].label + " + " + self.parents[1].label
-        elif self.op == '-':
-            self.label_p = self.parents[0].label + " - " + self.parents[1].label
-        elif self.op == '*':
-            self.label_p = self.parents[0].label + " * " + self.parents[1].label
-        elif self.op.startswith('**'):
-            power = float(self.op[2:])
-            self.label_p = self.parents[0].label + "^" + str(power)
-        elif self.op == 'sin':
-            self.label_p = "sin(" + self.parents[0].label + ")"
-        elif self.op == 'cos':
-            self.label_p = "cos(" + self.parents[0].label + ")"
-        elif self.op == 'relu':
-            self.label_p = "relu(" + self.parents[0].label + ")"
-        return self.label_p
-
-    def __pow__(self, power, modulo=None):
-        if isinstance(power, Node):
-            out = Node(self.data ** power.data, [self, power], f'**{power.data}')
-        else:
-            out = Node(self.data ** power, [self], f'**{power}')
-        self.children.append(out)
-        return out
-
-    def __add__(self, other):
-        out = Node(self.data + other.data, [self, other], '+')
-        self.children.append(out)
-        other.children.append(out)
-        return out
-
-    def __mul__(self, other):
-        out = Node(self.data * other.data, [self, other], '*')
-        self.children.append(out)
-        other.children.append(out)
-        return out
-
-    def __sub__(self, other):
-        out = Node(self.data - other.data, [self, other], '-')
-        self.children.append(out)
-        other.children.append(out)
-        return out
-
-    def sin(self):
-        out = Node(np.sin(self.data), [self], 'sin')
-        self.children.append(out)
-        return out
-
-    def cos(self):
-        out = Node(np.cos(self.data), [self], 'cos')
-        self.children.append(out)
-        return out
-
-    def backward(self):
-        self.dd = []
-
-        def go(v):
-            #print(self.dd)
-            if v.is_require_grads:
-                grad = 1
-                for node in self.dd:
-                    n, ni = node
-                    grad *= n.dcur_dparent[ni]
-                v.grad += grad
-                #print(f"{v.label}:", grad)
-            for pi, p in enumerate(v.parents):
-                self.dd.append((v, pi))
-                go(p)
-                self.dd.pop()
-            return self.grad
-        go(self)
-
-    def backward_dl_dc(self):
-        self.grad = 1
-        def go(v):
-            if not v.parents: # leaf nodes
-                return
-            for pi, p in enumerate(v.parents):
-                p.grad = v.dcur_dparent[pi] * v.grad
-            for pi, p in enumerate(v.parents):
-                go(p)
-        go(self)
-
-    def relu(self):
-        out = Node(np.maximum(self.data, 0), [self], 'relu')
-        self.children.append(out)
-        return out
 
 X, Y = generate_dataset()
 
@@ -308,48 +111,101 @@ X, Y = generate_dataset()
 # X = (X - X.mean()) / X.std()
 # Y = (Y - Y.mean()) / Y.std()
 
-w0 = 6.0
-b0 = 6.0
-
-learnrate = 0.001
-epoch = 1
+w01 = 1.0
+w02 = 1.0
+b01 = 1.0
+learnrate = 0.0001
+epoch = 4
 
 vv = None
 for i in range(epoch):
-    for x, y in zip(X, Y):
+    for (x, y), c in zip(X, Y):
+        c = c[0]
         # Rebuild the computational graph
-        w1 = Node(w0, label="w1")
+        w1 = Node(w01, label="w1")
         w1.is_require_grads = True
-        b1 = Node(b0, label="b1")
+        w2 = Node(w02, label="w2")
+        w2.is_require_grads = True
+
+        b1 = Node(b01, label="b1")
         b1.is_require_grads = True
         x1 = Node(x, label="x1")
         y1 = Node(y, label="y1")
+        c1 = Node(c, label="c")
 
-        u = w1 * x1  # Now we can use an int directly
+        u1 = w1 * x1
+        u1.label = "u1"
+
+        u2 = w2 * y1
+        u2.label = "u2"
+
+        u = u1 + u2
         u.label = "u"
 
         z = u + b1
         z.label = "z"
 
-        a = z.relu()
-        a.label = "a"
+        # a = z.relu()
+        # a.label = "a"
 
-        lm = a - y1
+        lm = z - c1
         lm.label = "lm"
 
         l = lm ** 2
         l.label = "l"
 
-        l.backward_dl_dc()
+        l.backward()
 
-        print("==")
-        print(w1.grad, " ", b1.grad)
-        grad_check = check_torch(float(w0), float(b0),  float(x), float(y) )
-        w1grad, b1grad = grad_check["dl_dw1"], grad_check["dl_b0"]
-        print(w1grad.item(), " ", b1grad.item())
-        print("==")
-        w0 = w0 - w1.grad * learnrate
-        b0 = b0 - b1.grad * learnrate
-        print(f"loss:{l.data:.5f}", f"w0:{w0:.5f}", f"b0:{b0:.5f}")
+        w01 = w01 - w1.grad * learnrate
+        w02 = w02 - w2.grad * learnrate
+        b01 = b01 - b1.grad * learnrate
+        print(f"loss:{l.data:.5f}", f"w1:{w01:.5f}", f"w2:{w02:.5f}", f"b0:{b01:.5f}")
 
+        #print("==")
+        #print(w1.grad, " ", b1.grad)
+        #grad_check = check_torch(float(w0), float(b0),  float(x), float(y) )
+        #w1grad, b1grad = grad_check["dl_dw1"], grad_check["dl_b0"]
+        #print(w1grad.item(), " ", b1grad.item())
+        #print("==")
 
+    import matplotlib.pyplot as plt
+    # clear previous plot
+    plt.clf()
+    plt.scatter(X[:, 0], X[:, 1], c=Y[:, 0])
+    min_x = np.min(X[:, 0])
+    max_x = np.max(X[:, 0])
+
+    x2 = lambda xx: (0.5-b01) / w02 - (w01 / w02) * xx
+    # plot this function
+    xx = np.linspace(min_x, max_x, 100)
+    yy = x2(xx)
+    plt.plot(xx, yy, '-r')
+    plt.draw()
+    plt.pause(1)
+
+X_new = np.zeros((2000, 3))
+for i in range(X.shape[0]):
+    x1, x2 = X[i]
+    x_new = w01*x1 + w02*x2 + b01
+    X_new[i] = x1, x2, x_new
+
+plt.clf()
+# Create the initial plot
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+colors = np.where(Y < 0.5, 'r', 'b')
+# make a vector of colors, delete dims unnecessary
+colors = np.squeeze(colors)
+ax.scatter(X_new[:, 0], X_new[:, 1],  X_new[:, 2], c=colors, depthshade=True)
+ax.set_xlabel('X1')
+ax.set_ylabel('X2')
+ax.set_zlabel('Value')
+# ax.set_zlim(0, 1)  # Set Z-axis range
+ax.set_title('3D Surface Plots')
+# plt.scatter(X_new[:, 0], X_new[:, 1], c=Y[:, 0])
+# plt.draw()
+
+#draw histogram from Y
+plt.figure()
+plt.hist(X_new[:, 2], bins=16)
+plt.show()
