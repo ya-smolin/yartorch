@@ -68,18 +68,21 @@ class Node:
 
     def __add__(self, other):
         out = Node(self.data + other.data, [self, other], '+')
+        out.dc_dp = [1, 1]
         self.children.append(out)
         other.children.append(out)
         return out
 
     def __mul__(self, other):
         out = Node(self.data * other.data, [self, other], '*')
+        out.dc_dp = [other.data, self.data]
         self.children.append(out)
         other.children.append(out)
         return out
 
     def __sub__(self, other):
         out = Node(self.data - other.data, [self, other], '-')
+        out.dc_dp = [1, -1]
         self.children.append(out)
         other.children.append(out)
         return out
@@ -110,3 +113,7 @@ class Node:
             for pi, p in enumerate(v.parents):
                 go(p)
         go(self)
+
+#TODO: implement Neuron class
+class Neuron:
+    pass
