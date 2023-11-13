@@ -1,5 +1,6 @@
 # useful examples https://huggingface.co/TheBloke/zephyr-7B-beta-GPTQ
 import json
+import os
 import time
 
 import pandas as pd
@@ -104,26 +105,51 @@ from transformers import Trainer, TrainingArguments, DataCollatorForLanguageMode
 #eval_dataset = validation_dataset,
 #evaluation_strategy="steps",
 #eval_steps=10,
+import wandb
+wandb.login(key="")
+
+if LOG_DATASET := False:
+    run = wandb.init(
+        project="finetuning_zephyr7b",
+        name="log_dataset",
+    )
+
+    dataset.save_to_disk("AgentInstruct_prep.hf")
+    artifact = wandb.Artifact(name="AgentInstruct_prep", type="dataset")
+    artifact.add_dir("./AgentInstruct_prep.hf", name="train")
+    run.log_artifact(artifact)
+    run.finish()
+
+run = wandb.init(
+    project="finetuning_zephyr7b",   # Project name.
+    name="run0",                     # name of the run within this project.
+)
+
+
+#os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # Log model checkpoints.
 
 trainer = Trainer(
     model=model,
     train_dataset=train_dataset,
 
+
     args=TrainingArguments(
-        per_device_train_batch_size=8,
+        per_device_train_batch_size=1,
         gradient_accumulation_steps=1,
         warmup_steps=2,
-        max_steps=3000,
+        max_steps=3,
         learning_rate=9e-5, #
         fp16=True,
         logging_steps=1,
         output_dir=output_dir,
         optim="adamw_hf",
-        save_steps=30,
+        save_steps=6,
+        report_to=["wandb"],
+
     ),
     data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False)
 )
 model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
 trainer.train()
-
+run.finish()
 
