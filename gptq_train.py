@@ -106,7 +106,10 @@ from transformers import Trainer, TrainingArguments, DataCollatorForLanguageMode
 #evaluation_strategy="steps",
 #eval_steps=10,
 import wandb
-wandb.login(key="")
+# read wnb_key from file
+with open("wnb_key.txt", "r") as f:
+    key = f.read()
+wandb.login(key=key)
 
 if LOG_DATASET := False:
     run = wandb.init(
